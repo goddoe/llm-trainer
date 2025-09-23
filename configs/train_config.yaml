@@ -1,0 +1,120 @@
+# Unified training configuration for both LoRA and SFT
+# Set use_lora to true for parameter-efficient training, false for full fine-tuning
+
+model:
+  model_name: "google/gemma-2b"  # Base model to use
+  max_length: 512
+  load_in_4bit: false  # Enable for memory-efficient training
+  load_in_8bit: false  # Enable for memory-efficient training
+  device_map: "auto"
+  trust_remote_code: true
+
+# LoRA configuration (only used when use_lora is true)
+lora:
+  r: 16  # LoRA rank - lower values = fewer parameters
+  lora_alpha: 32  # LoRA scaling factor
+  lora_dropout: 0.1
+  bias: "none"
+  target_modules:  # Modules to apply LoRA to
+    - "q_proj"
+    - "v_proj"
+    - "k_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
+
+training:
+  # Training mode selection
+  use_lora: true  # Set to false for full SFT
+
+  # Output configuration
+  output_dir: "./outputs/unified"
+
+  # Training hyperparameters
+  num_train_epochs: 3
+  per_device_train_batch_size: 4  # Reduce for larger models
+  per_device_eval_batch_size: 4
+  gradient_accumulation_steps: 4  # Increase for effective larger batch size
+  gradient_checkpointing: true  # Enable for memory efficiency
+
+  # Learning rate (typically higher for LoRA, lower for SFT)
+  learning_rate: 2.0e-4  # LoRA: 2e-4, SFT: 5e-5
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.1
+  weight_decay: 0.01
+
+  # Logging and saving
+  logging_steps: 10
+  save_steps: 100
+  eval_steps: 100
+  save_total_limit: 3
+
+  # Sequence configuration
+  max_seq_length: 512
+  packing: false  # Enable for better GPU utilization with short sequences
+  dataset_num_proc: 4
+
+  # Precision settings
+  fp16: false  # Enable for older GPUs (V100, etc.)
+  bf16: false  # Enable for newer GPUs (A100, etc.)
+  tf32: true   # Enable for Ampere GPUs
+
+  # Optimizer
+  optim: "adamw_torch"
+  seed: 42
+  remove_unused_columns: false
+
+  # Reporting
+  report_to:
+    - "tensorboard"
+
+  # HuggingFace Hub (optional)
+  push_to_hub: false
+  hub_model_id: null
+
+data:
+  # Dataset configuration
+  dataset_name: "conll2003"  # Use this for opensource datasets
+  # train_file: "./data/train.jsonl"  # Uncomment to use custom JSONL files
+  # validation_file: "./data/validation.jsonl"
+  # test_file: "./data/test.jsonl"
+
+  max_samples: null  # Set to limit dataset size for testing
+  validation_split: 0.1
+  seed: 42
+
+# Training profiles (examples for different scenarios)
+profiles:
+  # Quick test profile
+  test:
+    training:
+      num_train_epochs: 1
+      max_samples: 100
+      save_steps: 50
+
+  # Memory-efficient profile for large models
+  memory_efficient:
+    model:
+      load_in_4bit: true
+    training:
+      per_device_train_batch_size: 1
+      gradient_accumulation_steps: 16
+      gradient_checkpointing: true
+
+  # Production LoRA profile
+  production_lora:
+    training:
+      use_lora: true
+      num_train_epochs: 5
+      learning_rate: 2.0e-4
+      save_steps: 200
+
+  # Production SFT profile
+  production_sft:
+    training:
+      use_lora: false
+      num_train_epochs: 3
+      learning_rate: 5.0e-5
+      per_device_train_batch_size: 2
+      gradient_accumulation_steps: 8
