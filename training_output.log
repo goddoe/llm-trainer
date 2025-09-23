@@ -1,0 +1,56 @@
+`torch_dtype` is deprecated! Use `dtype` instead!
+==================================================
+Training Mode: LoRA (Parameter-Efficient)
+Model: Qwen/Qwen3-0.6B
+Output Directory: ./outputs/quick_test
+Conversation Format: Enabled
+==================================================
+Loading model: Qwen/Qwen3-0.6B
+
+Applying LoRA configuration...
+trainable params: 1,146,880 || all params: 596,923,392 || trainable%: 0.1921
+
+Preparing dataset...
+Training samples: 5
+Validation samples: 5
+Tokenizing train dataset (num_proc=1):   0%|          | 0/5 [00:00<?, ? examples/s]Tokenizing train dataset (num_proc=1): 100%|██████████| 5/5 [00:00<00:00,  7.47 examples/s]Tokenizing train dataset (num_proc=1): 100%|██████████| 5/5 [00:00<00:00,  6.48 examples/s]
+Truncating train dataset (num_proc=1):   0%|          | 0/5 [00:00<?, ? examples/s]Truncating train dataset (num_proc=1): 100%|██████████| 5/5 [00:00<00:00, 32.32 examples/s]
+Tokenizing eval dataset (num_proc=1):   0%|          | 0/5 [00:00<?, ? examples/s]Tokenizing eval dataset (num_proc=1): 100%|██████████| 5/5 [00:00<00:00,  7.59 examples/s]Tokenizing eval dataset (num_proc=1): 100%|██████████| 5/5 [00:00<00:00,  6.58 examples/s]
+Truncating eval dataset (num_proc=1):   0%|          | 0/5 [00:00<?, ? examples/s]Truncating eval dataset (num_proc=1): 100%|██████████| 5/5 [00:00<00:00, 35.58 examples/s]
+The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'bos_token_id': None, 'pad_token_id': 151643}.
+
+Starting training...
+  0%|          | 0/5 [00:00<?, ?it/s] 20%|██        | 1/5 [00:00<00:03,  1.24it/s]                                              20%|██        | 1/5 [00:00<00:03,  1.24it/s] 40%|████      | 2/5 [00:00<00:01,  2.41it/s]                                              40%|████      | 2/5 [00:00<00:01,  2.41it/s] 60%|██████    | 3/5 [00:01<00:00,  3.49it/s]                                              60%|██████    | 3/5 [00:01<00:00,  3.49it/s] 80%|████████  | 4/5 [00:01<00:00,  4.44it/s]                                              80%|████████  | 4/5 [00:01<00:00,  4.44it/s]100%|██████████| 5/5 [00:01<00:00,  5.24it/s]                                             100%|██████████| 5/5 [00:01<00:00,  5.24it/s]/root/projects/llm-trainer/.venv/lib/python3.11/site-packages/peft/utils/save_and_load.py:300: UserWarning: Setting `save_embedding_layers` to `True` as the embedding layer has been resized during finetuning.
+  warnings.warn(
+                                             100%|██████████| 5/5 [00:03<00:00,  5.24it/s]100%|██████████| 5/5 [00:03<00:00,  1.41it/s]
+/root/projects/llm-trainer/.venv/lib/python3.11/site-packages/peft/utils/save_and_load.py:300: UserWarning: Setting `save_embedding_layers` to `True` as the embedding layer has been resized during finetuning.
+  warnings.warn(
+{'loss': 2.6076, 'grad_norm': 1.8244496583938599, 'learning_rate': 0.0002, 'entropy': 1.613070011138916, 'num_tokens': 227.0, 'mean_token_accuracy': 0.5929203629493713, 'epoch': 0.2}
+{'loss': 2.5804, 'grad_norm': 1.6495811939239502, 'learning_rate': 0.0002, 'entropy': 1.4486088752746582, 'num_tokens': 468.0, 'mean_token_accuracy': 0.5874999761581421, 'epoch': 0.4}
+{'loss': 2.2786, 'grad_norm': 1.621687412261963, 'learning_rate': 0.0002, 'entropy': 1.5328829288482666, 'num_tokens': 704.0, 'mean_token_accuracy': 0.6000000238418579, 'epoch': 0.6}
+{'loss': 2.28, 'grad_norm': 1.6911190748214722, 'learning_rate': 0.0002, 'entropy': 1.5784268379211426, 'num_tokens': 934.0, 'mean_token_accuracy': 0.6069868803024292, 'epoch': 0.8}
+{'loss': 2.3602, 'grad_norm': 1.688783884048462, 'learning_rate': 0.0002, 'entropy': 1.579304575920105, 'num_tokens': 1167.0, 'mean_token_accuracy': 0.5905172228813171, 'epoch': 1.0}
+{'train_runtime': 3.5379, 'train_samples_per_second': 1.413, 'train_steps_per_second': 1.413, 'train_loss': 2.4213321685791014, 'epoch': 1.0}
+
+Saving model to ./outputs/quick_test
+
+Merging and saving LoRA weights...
+Saved merged model to ./outputs/quick_test/merged
+
+Evaluating model...
+  0%|          | 0/5 [00:00<?, ?it/s] 80%|████████  | 4/5 [00:00<00:00, 33.30it/s]100%|██████████| 5/5 [00:00<00:00, 31.27it/s]
+Evaluation results:
+  eval_loss: 2.2052
+  eval_runtime: 0.2048
+  eval_samples_per_second: 24.4190
+  eval_steps_per_second: 24.4190
+  eval_entropy: 1.6089
+  eval_num_tokens: 1167.0000
+  eval_mean_token_accuracy: 0.6105
+  epoch: 1.0000
+
+==================================================
+Training completed successfully!
+Model saved to: ./outputs/quick_test
+Merged model saved to: ./outputs/quick_test/merged
+==================================================

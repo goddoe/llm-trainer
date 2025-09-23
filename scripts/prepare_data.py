@@ -3,7 +3,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Any
 import pandas as pd
 from datasets import load_dataset
 from sklearn.model_selection import train_test_split
@@ -13,8 +13,8 @@ sys.path.append(str(Path(__file__).parent.parent))
 from src.data_processor import NERDataProcessor
 
 
-def convert_conll_to_jsonl(output_dir: str, max_samples: int = None):
-    processor = NERDataProcessor()
+def convert_conll_to_jsonl(output_dir: str, max_samples: int = None, use_conversation_format: bool = True):
+    processor = NERDataProcessor(use_conversation_format=use_conversation_format)
     dataset = load_dataset("conll2003")
 
     output_path = Path(output_dir)
@@ -53,8 +53,9 @@ def convert_custom_csv_to_jsonl(
     entities_column: str = "entities",
     test_size: float = 0.1,
     val_size: float = 0.1,
+    use_conversation_format: bool = True,
 ):
-    processor = NERDataProcessor()
+    processor = NERDataProcessor(use_conversation_format=use_conversation_format)
 
     df = pd.read_csv(csv_path)
 
@@ -71,6 +72,12 @@ def convert_custom_csv_to_jsonl(
     for _, row in df.iterrows():
         text = row[text_column]
         entities = row['entities_parsed']
+
+        # Use varied instruction if in conversation format
+        if use_conversation_format and instructions:
+            # Override processor's default instruction
+            instruction = random.choice(instructions)
+            processor.instruction_template = instruction
 
         formatted = processor.format_for_training(text, entities)
         examples.append(formatted)
@@ -94,8 +101,8 @@ def convert_custom_csv_to_jsonl(
     print(f"Data split - Train: {len(train_data)}, Val: {len(val_data)}, Test: {len(test_data)}")
 
 
-def convert_ontonotes_to_jsonl(output_dir: str, max_samples: int = None):
-    processor = NERDataProcessor()
+def convert_ontonotes_to_jsonl(output_dir: str, max_samples: int = None, use_conversation_format: bool = True):
+    processor = NERDataProcessor(use_conversation_format=use_conversation_format)
 
     # Note: OntoNotes requires manual download or specific access
     # This is a placeholder for OntoNotes conversion
@@ -122,8 +129,35 @@ def convert_ontonotes_to_jsonl(output_dir: str, max_samples: int = None):
     print(f"Saved example data to {output_path / 'example.jsonl'}")
 
 
-def create_synthetic_ner_data(output_dir: str, num_samples: int = 1000):
-    processor = NERDataProcessor()
+def create_synthetic_ner_data(output_dir: str, num_samples: int = 1000, use_conversation_format: bool = True, instruction_style: str = "balanced"):
+    processor = NERDataProcessor(use_conversation_format=use_conversation_format)
+
+    # Instruction variations for conversation format with entity keys
+    instruction_templates = {
+        "formal": [
+            "Extract entities for: PERSON, ORG, LOC, DATE, MONEY. Return the results in JSON format.",
+            "Identify the following entity types: PERSON (names), ORG (organizations), LOC (locations). Format output as JSON.",
+            "Perform entity extraction for keys: PERSON, ORG, LOC, DATE, EVENT. Return JSON with entity types as keys.",
+        ],
+        "casual": [
+            "Find: PERSON, ORG, LOC entities. Return as JSON.",
+            "Extract people (PERSON), companies (ORG), and places (LOC). Give me JSON format.",
+            "Get me: PERSON, ORG, LOC, DATE entities. Format as JSON.",
+        ],
+        "technical": [
+            "Execute NER for types: {PERSON: [], ORG: [], LOC: [], DATE: []}. Return populated JSON.",
+            "Apply extraction for entity schema: PERSON|ORG|LOC|DATE|MONEY. Output as JSON object.",
+        ],
+        "balanced": []  # Will mix all styles
+    }
+
+    # Mix all styles for balanced
+    if instruction_style == "balanced":
+        for style_templates in instruction_templates.values():
+            if style_templates:  # Skip empty balanced list
+                instruction_templates["balanced"].extend(style_templates)
+
+    instructions = instruction_templates.get(instruction_style, instruction_templates["formal"])
 
     # Create synthetic NER data for testing
     templates = [
@@ -147,6 +181,12 @@ def create_synthetic_ner_data(output_dir: str, num_samples: int = 1000):
 
     import random
     random.seed(42)
+
+    # Choose instructions for conversation format
+    if use_conversation_format:
+        instructions = instruction_templates.get(instruction_style, instruction_templates["formal"])
+    else:
+        instructions = []
 
     examples = []
     for _ in range(num_samples):
@@ -178,6 +218,12 @@ def create_synthetic_ner_data(output_dir: str, num_samples: int = 1000):
                         entity_value = entity_template.replace(f"{{{placeholder}}}", value)
                         entities[entity_type].append(entity_value)
 
+        # Use varied instruction if in conversation format
+        if use_conversation_format and instructions:
+            # Override processor's default instruction
+            instruction = random.choice(instructions)
+            processor.instruction_template = instruction
+
         formatted = processor.format_for_training(text, entities)
         examples.append(formatted)
 
@@ -201,7 +247,7 @@ def create_synthetic_ner_data(output_dir: str, num_samples: int = 1000):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Prepare NER data for training")
+    parser = argparse.ArgumentParser(description="Prepare NER data for training in conversation format")
     parser.add_argument("--dataset", type=str, default="conll2003",
                        choices=["conll2003", "ontonotes", "custom", "synthetic"],
                        help="Dataset to convert")
@@ -216,13 +262,23 @@ def main():
                        help="Name of entities column in CSV (for custom dataset)")
     parser.add_argument("--num-samples", type=int, default=1000,
                        help="Number of synthetic samples to generate")
+    parser.add_argument("--conversation-format", action="store_true", default=True,
+                       help="Use conversation format for training data (default)")
+    parser.add_argument("--legacy-format", action="store_true",
+                       help="Use legacy text format instead of conversation format")
+    parser.add_argument("--instruction-style", type=str, default="balanced",
+                       choices=["formal", "casual", "technical", "balanced"],
+                       help="Style of instructions in conversation format")
 
     args = parser.parse_args()
 
+    # Determine format
+    use_conversation_format = not args.legacy_format
+
     if args.dataset == "conll2003":
-        convert_conll_to_jsonl(args.output, args.max_samples)
+        convert_conll_to_jsonl(args.output, args.max_samples, use_conversation_format)
     elif args.dataset == "ontonotes":
-        convert_ontonotes_to_jsonl(args.output, args.max_samples)
+        convert_ontonotes_to_jsonl(args.output, args.max_samples, use_conversation_format)
     elif args.dataset == "custom":
         if not args.input:
             raise ValueError("--input required for custom dataset")
@@ -231,11 +287,17 @@ def main():
             args.output,
             args.text_column,
             args.entities_column,
+            use_conversation_format=use_conversation_format
         )
     elif args.dataset == "synthetic":
-        create_synthetic_ner_data(args.output, args.num_samples)
+        create_synthetic_ner_data(args.output, args.num_samples, use_conversation_format, args.instruction_style)
 
-    print(f"Data preparation completed. Files saved to {args.output}")
+    print(f"\nData preparation completed!")
+    print(f"Format: {'Conversation' if use_conversation_format else 'Legacy'}")
+    if use_conversation_format:
+        print(f"Instruction style: {args.instruction_style}")
+    print(f"Files saved to: {args.output}")
+    print("\n✓ Ready for training with instruction-tuned models!" if use_conversation_format else "")
 
 
 if __name__ == "__main__":

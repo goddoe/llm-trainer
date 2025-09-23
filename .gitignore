@@ -15,3 +15,8 @@ wheels/
 .idea/
 CLAUDE.md
 uv.lock
+
+# local only
+kb_docs/
+data/
+outputs/

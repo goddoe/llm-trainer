@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Optional, List
 from transformers import TrainingArguments
 from peft import LoraConfig, TaskType
+from trl import SFTConfig as TRLSFTConfig
 
 
 @dataclass
@@ -48,6 +49,7 @@ class SFTConfig:
     dataset_text_field: str = "text"
     dataset_num_proc: int = 4
     num_train_epochs: int = 3
+    max_steps: int = -1  # Support for limiting training steps
     per_device_train_batch_size: int = 4
     per_device_eval_batch_size: int = 4
     gradient_accumulation_steps: int = 4
@@ -55,6 +57,7 @@ class SFTConfig:
     learning_rate: float = 2e-4
     lr_scheduler_type: str = "cosine"
     warmup_ratio: float = 0.1
+    warmup_steps: int = 0  # Support for warmup steps
     weight_decay: float = 0.01
     logging_steps: int = 10
     save_steps: int = 100
@@ -72,11 +75,21 @@ class SFTConfig:
     seed: int = 42
     remove_unused_columns: bool = False
 
+    # Conversation format settings
+    use_conversation_format: bool = True
+    assistant_only_loss: bool = True  # Only compute loss on assistant responses
+    completion_only_loss: bool = False  # For prompt-completion format
+
+    # Chat template settings
+    chat_template: Optional[str] = None  # Custom chat template
+    tokenizer_chat_template: bool = True  # Use tokenizer's built-in template
+
     def to_training_args(self) -> TrainingArguments:
         return TrainingArguments(
             output_dir=self.output_dir,
             overwrite_output_dir=self.overwrite_output_dir,
             num_train_epochs=self.num_train_epochs,
+            max_steps=self.max_steps,
             per_device_train_batch_size=self.per_device_train_batch_size,
             per_device_eval_batch_size=self.per_device_eval_batch_size,
             gradient_accumulation_steps=self.gradient_accumulation_steps,
@@ -103,6 +116,38 @@ class SFTConfig:
             greater_is_better=False,
         )
 
+    def to_trl_sft_config(self) -> TRLSFTConfig:
+        """Convert to TRL's SFTConfig for conversation training"""
+        return TRLSFTConfig(
+            output_dir=self.output_dir,
+            num_train_epochs=self.num_train_epochs,
+            max_steps=self.max_steps,
+            per_device_train_batch_size=self.per_device_train_batch_size,
+            per_device_eval_batch_size=self.per_device_eval_batch_size,
+            gradient_accumulation_steps=self.gradient_accumulation_steps,
+            gradient_checkpointing=self.gradient_checkpointing,
+            learning_rate=self.learning_rate,
+            lr_scheduler_type=self.lr_scheduler_type,
+            warmup_ratio=self.warmup_ratio,
+            weight_decay=self.weight_decay,
+            logging_steps=self.logging_steps,
+            save_steps=self.save_steps,
+            eval_steps=self.eval_steps,
+            save_total_limit=self.save_total_limit,
+            fp16=self.fp16,
+            bf16=self.bf16,
+            tf32=self.tf32,
+            optim=self.optim,
+            seed=self.seed,
+            remove_unused_columns=self.remove_unused_columns,
+            report_to=self.report_to,
+            push_to_hub=self.push_to_hub,
+            hub_model_id=self.hub_model_id,
+            max_length=self.max_seq_length,  # Changed from max_seq_length to max_length
+            packing=self.packing,
+            dataset_num_proc=self.dataset_num_proc,
+        )
+
 
 @dataclass
 class DataConfig:
@@ -121,6 +166,10 @@ def get_model_configs(model_type: str = "gemma") -> ModelConfig:
             model_name="google/gemma-2b",
             max_length=512,
         ),
+        "gemma-3-it": ModelConfig(
+            model_name="google/gemma-3-270m-it",
+            max_length=512,
+        ),
         "llama": ModelConfig(
             model_name="meta-llama/Llama-3.2-1B",
             max_length=512,
@@ -136,6 +185,10 @@ def get_model_configs(model_type: str = "gemma") -> ModelConfig:
         ),
         "qwen": ModelConfig(
             model_name="Qwen/Qwen2.5-0.5B",
+            max_length=512,
+        ),
+        "qwen3": ModelConfig(
+            model_name="Qwen/Qwen3-0.6B",
             max_length=512,
         ),
     }

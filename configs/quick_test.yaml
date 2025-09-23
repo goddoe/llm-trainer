@@ -1,0 +1,70 @@
+# Quick test configuration for 5-step training
+
+# Training mode
+use_lora: true  # Use LoRA for quick training
+
+model:
+  model_name: "Qwen/Qwen3-0.6B"  # Small model for quick testing
+  max_length: 256  # Shorter for faster training
+  load_in_4bit: false
+  load_in_8bit: false
+  device_map: "auto"
+  trust_remote_code: true
+
+lora:
+  r: 8  # Small rank for quick testing
+  lora_alpha: 16
+  lora_dropout: 0.05
+  bias: "none"
+  target_modules:
+    - "q_proj"
+    - "v_proj"
+
+training:
+  # Note: use_lora is handled separately, not part of SFTConfig
+  use_conversation_format: true
+  assistant_only_loss: true
+
+  output_dir: "./outputs/quick_test"
+
+  # Quick training settings - just 5 steps!
+  max_steps: 5  # Only 5 steps
+  num_train_epochs: 1  # Will stop at max_steps
+  per_device_train_batch_size: 1  # Small batch for quick run
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 1
+  gradient_checkpointing: false
+
+  learning_rate: 0.0002  # 2e-4
+  lr_scheduler_type: "constant"
+  warmup_steps: 0
+  weight_decay: 0.01
+
+  logging_steps: 1  # Log every step
+  save_steps: 5  # Save at the end
+  eval_steps: 5  # Eval at the end
+  save_total_limit: 1
+
+  max_seq_length: 256
+  packing: false
+  dataset_num_proc: 1
+
+  fp16: true
+  bf16: false
+  tf32: true
+
+  optim: "adamw_torch"
+  seed: 42
+  remove_unused_columns: false
+
+  report_to: []  # No reporting for quick test
+
+  push_to_hub: false
+  hub_model_id: null
+
+data:
+  train_file: "./data/quick_train/train.jsonl"
+  validation_file: "./data/quick_train/validation.jsonl"
+  test_file: "./data/quick_train/test.jsonl"
+  max_samples: 5  # Only use 5 samples for ultra-quick training
+  seed: 42

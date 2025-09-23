@@ -1,0 +1,27 @@
+[
+  {
+    "name": "people",
+    "type": "extract",
+    "description": "Names of people mentioned",
+    "required": true
+  },
+  {
+    "name": "organizations",
+    "type": "extract",
+    "description": "Organizations or companies mentioned",
+    "required": true
+  },
+  {
+    "name": "sentiment",
+    "type": "enum",
+    "description": "Overall sentiment of the text",
+    "choices": ["positive", "negative", "neutral"],
+    "required": true
+  },
+  {
+    "name": "contains_financial_info",
+    "type": "boolean",
+    "description": "Whether the text contains financial information",
+    "required": true
+  }
+]

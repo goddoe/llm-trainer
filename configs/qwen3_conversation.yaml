@@ -1,0 +1,115 @@
+# Configuration for Qwen3-0.6B with conversation format
+# Optimized for instruction-tuned conversation training
+
+model:
+  model_name: "Qwen/Qwen3-0.6B"  # Instruction-tuned Qwen3 model
+  max_length: 512
+  load_in_4bit: false  # Disable for small model
+  load_in_8bit: false
+  device_map: "auto"
+  trust_remote_code: true
+
+# LoRA configuration for parameter-efficient training
+lora:
+  r: 16  # LoRA rank
+  lora_alpha: 32
+  lora_dropout: 0.05
+  bias: "none"
+  target_modules:
+    - "q_proj"
+    - "v_proj"
+    - "k_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
+
+training:
+  # Training mode - enable conversation format by default
+  use_lora: true  # Use LoRA for efficiency
+  use_conversation_format: true  # Enable conversation format
+  assistant_only_loss: true  # Only compute loss on assistant responses
+
+  # Output configuration
+  output_dir: "./outputs/qwen3-conversation"
+
+  # Training hyperparameters optimized for conversation
+  num_train_epochs: 3
+  per_device_train_batch_size: 8  # Can use larger batch with 0.6B model
+  per_device_eval_batch_size: 8
+  gradient_accumulation_steps: 2
+  gradient_checkpointing: false  # Not needed for small model
+
+  # Learning rate for conversation fine-tuning
+  learning_rate: 1e-4  # Lower for instruction-tuned model
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.1
+  weight_decay: 0.01
+
+  # Logging and saving
+  logging_steps: 10
+  save_steps: 100
+  eval_steps: 100
+  save_total_limit: 3
+
+  # Sequence configuration
+  max_seq_length: 512
+  packing: false  # Disable for conversation format
+  dataset_num_proc: 4
+
+  # Precision settings
+  fp16: true  # Enable for faster training
+  bf16: false
+  tf32: true
+
+  # Optimizer
+  optim: "adamw_torch"
+  seed: 42
+  remove_unused_columns: false
+
+  # Reporting
+  report_to:
+    - "tensorboard"
+
+  # HuggingFace Hub (optional)
+  push_to_hub: false
+  hub_model_id: null
+
+data:
+  # Dataset configuration for conversation format
+  dataset_name: "conll2003"  # Will be converted to conversation format
+  # train_file: "./data/train.jsonl"  # Uncomment for custom data
+  # validation_file: "./data/validation.jsonl"
+  # test_file: "./data/test.jsonl"
+
+  max_samples: null  # Set to limit dataset size for testing
+  validation_split: 0.1
+  seed: 42
+
+# Training profiles for different scenarios
+profiles:
+  # Quick test with conversation format
+  test:
+    training:
+      num_train_epochs: 1
+      max_samples: 100
+      save_steps: 50
+      per_device_train_batch_size: 4
+
+  # Full training with conversation format
+  production:
+    training:
+      num_train_epochs: 5
+      learning_rate: 5e-5
+      save_steps: 200
+      per_device_train_batch_size: 16
+      gradient_accumulation_steps: 1
+
+  # Memory-efficient for larger contexts
+  long_context:
+    model:
+      max_length: 1024
+    training:
+      per_device_train_batch_size: 4
+      gradient_accumulation_steps: 4
+      max_seq_length: 1024

@@ -12,16 +12,15 @@ import yaml
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
-    DataCollatorForLanguageModeling,
     BitsAndBytesConfig,
 )
-from peft import get_peft_model, prepare_model_for_kbit_training, PeftModel
-from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
+from peft import get_peft_model, prepare_model_for_kbit_training
+from trl import SFTTrainer, SFTConfig as TRLSFTConfig
 from datasets import load_dataset
 import json
 
-from data_processor import NERDataProcessor
-from model_config import (
+from src.data_processor import NERDataProcessor
+from src.model_config import (
     ModelConfig,
     LoRAConfig,
     SFTConfig,
@@ -90,23 +89,14 @@ def setup_model_and_tokenizer(model_config: ModelConfig, use_quantization: bool 
     return model, tokenizer
 
 
-def create_data_collator(tokenizer, use_completion_only: bool = False):
-    """Create appropriate data collator"""
-    if use_completion_only:
-        response_template = "Entities:"
-        response_template_ids = tokenizer.encode(
-            response_template, add_special_tokens=False
-        )
-        return DataCollatorForCompletionOnlyLM(
-            response_template=response_template_ids,
-            tokenizer=tokenizer,
-            mlm=False,
-        )
-    else:
-        return DataCollatorForLanguageModeling(
-            tokenizer=tokenizer,
-            mlm=False,
-        )
+def prepare_tokenizer_for_chat(tokenizer):
+    """Prepare tokenizer for chat format"""
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    if tokenizer.chat_template is None:
+        # Set a default chat template if none exists
+        tokenizer.chat_template = "{% for message in messages %}{% if message['role'] == 'user' %}{{ 'User: ' + message['content'] + '\n' }}{% elif message['role'] == 'assistant' %}{{ 'Assistant: ' + message['content'] + '\n' }}{% endif %}{% endfor %}"
+    return tokenizer
 
 
 def main():
@@ -116,10 +106,14 @@ def main():
     parser.add_argument("--use-lora", action="store_true",
                        help="Use LoRA for parameter-efficient training")
     parser.add_argument("--config", type=str, help="Path to config file")
+    parser.add_argument("--use-conversation-format", action="store_true", default=True,
+                       help="Use conversation format for training")
+    parser.add_argument("--assistant-only-loss", action="store_true", default=True,
+                       help="Only compute loss on assistant responses")
 
     # Model configuration
     parser.add_argument("--model-type", type=str, default="gemma",
-                       choices=["gemma", "llama", "mistral", "phi", "qwen"],
+                       choices=["gemma", "gemma-3-it", "llama", "mistral", "phi", "qwen", "qwen3"],
                        help="Type of base model to use")
     parser.add_argument("--model-name", type=str,
                        help="Custom model name/path (overrides model-type)")
@@ -160,8 +154,8 @@ def main():
                        help="Load model in 8-bit precision")
     parser.add_argument("--load-in-4bit", action="store_true",
                        help="Load model in 4-bit precision")
-    parser.add_argument("--use-completion-only", action="store_true",
-                       help="Only train on completion/response part")
+    parser.add_argument("--completion-only-loss", action="store_true",
+                       help="Only train on completion/response part (for prompt-completion format)")
     parser.add_argument("--fp16", action="store_true",
                        help="Use FP16 training")
     parser.add_argument("--bf16", action="store_true",
@@ -185,13 +179,21 @@ def main():
             config = yaml.safe_load(f)
 
         # Extract use_lora from config if not specified in command line
-        if 'training' in config and 'use_lora' in config['training'] and not args.use_lora:
+        if 'use_lora' in config and not args.use_lora:
+            args.use_lora = config['use_lora']
+        elif 'training' in config and 'use_lora' in config['training'] and not args.use_lora:
             args.use_lora = config['training']['use_lora']
 
         model_config = ModelConfig(**config.get('model', {}))
         lora_config = LoRAConfig(**config.get('lora', {})) if args.use_lora else None
         sft_config = SFTConfig(**config.get('training', {}))
         data_config = DataConfig(**config.get('data', {}))
+
+        # Override conversation settings from config if not specified in args
+        if 'use_conversation_format' in config.get('training', {}):
+            args.use_conversation_format = config['training']['use_conversation_format']
+        if 'assistant_only_loss' in config.get('training', {}):
+            args.assistant_only_loss = config['training']['assistant_only_loss']
     else:
         # Build configs from command line arguments
         if args.model_name:
@@ -228,13 +230,16 @@ def main():
             per_device_train_batch_size=args.batch_size,
             gradient_accumulation_steps=args.gradient_accumulation_steps,
             learning_rate=default_lr,
-            max_seq_length=args.max_length,
+            max_seq_length=args.max_length,  # Note: this is our internal config, not TRL's
             gradient_checkpointing=args.gradient_checkpointing,
             fp16=args.fp16,
             bf16=args.bf16,
             seed=args.seed,
             push_to_hub=args.push_to_hub,
             hub_model_id=args.hub_model_id,
+            use_conversation_format=args.use_conversation_format,
+            assistant_only_loss=args.assistant_only_loss,
+            completion_only_loss=args.completion_only_loss,
         )
 
         data_config = DataConfig(
@@ -249,6 +254,7 @@ def main():
     print(f"Training Mode: {'LoRA (Parameter-Efficient)' if args.use_lora else 'SFT (Full Fine-Tuning)'}")
     print(f"Model: {model_config.model_name}")
     print(f"Output Directory: {sft_config.output_dir}")
+    print(f"Conversation Format: {'Enabled' if args.use_conversation_format else 'Disabled'}")
     print("=" * 50)
 
     # Setup model and tokenizer
@@ -256,6 +262,12 @@ def main():
         model_config,
         use_quantization=(args.load_in_8bit or args.load_in_4bit)
     )
+
+    # Prepare tokenizer for chat format if using conversation
+    if args.use_conversation_format:
+        tokenizer = prepare_tokenizer_for_chat(tokenizer)
+    elif tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
     # Apply LoRA if requested
     if args.use_lora:
@@ -276,7 +288,11 @@ def main():
 
     # Prepare data
     print("\nPreparing dataset...")
-    data_processor = NERDataProcessor(max_length=model_config.max_length)
+    data_processor = NERDataProcessor(
+        max_length=model_config.max_length,
+        use_conversation_format=args.use_conversation_format,
+        tokenizer=tokenizer if args.use_conversation_format else None
+    )
 
     if data_config.train_file:
         # Load from JSONL files
@@ -295,12 +311,22 @@ def main():
                 dataset[split] = dataset[split].select(range(data_config.max_samples))
 
     # Prepare dataset for SFT
-    if 'text' not in dataset['train'].column_names:
-        dataset = dataset.map(
-            data_processor.prepare_for_sft,
-            batched=True,
-            num_proc=sft_config.dataset_num_proc,
-        )
+    if args.use_conversation_format:
+        # For conversation format, ensure we have messages field
+        if 'messages' not in dataset['train'].column_names:
+            dataset = dataset.map(
+                data_processor.prepare_for_sft,
+                batched=True,
+                num_proc=sft_config.dataset_num_proc,
+            )
+    else:
+        # Legacy text format
+        if 'text' not in dataset['train'].column_names:
+            dataset = dataset.map(
+                data_processor.prepare_for_sft,
+                batched=True,
+                num_proc=sft_config.dataset_num_proc,
+            )
 
     print(f"Training samples: {len(dataset['train'])}")
     if 'validation' in dataset:
@@ -308,24 +334,59 @@ def main():
     elif 'test' in dataset:
         print(f"Test samples: {len(dataset['test'])}")
 
-    # Setup data collator
-    data_collator = create_data_collator(tokenizer, args.use_completion_only)
+    # Setup training arguments using TRL's SFTConfig
+    if args.use_conversation_format:
+        # Use TRL's SFTConfig for conversation format
+        trl_config = TRLSFTConfig(
+            output_dir=sft_config.output_dir,
+            num_train_epochs=sft_config.num_train_epochs,
+            per_device_train_batch_size=sft_config.per_device_train_batch_size,
+            per_device_eval_batch_size=sft_config.per_device_eval_batch_size,
+            gradient_accumulation_steps=sft_config.gradient_accumulation_steps,
+            gradient_checkpointing=sft_config.gradient_checkpointing,
+            learning_rate=sft_config.learning_rate,
+            lr_scheduler_type=sft_config.lr_scheduler_type,
+            warmup_ratio=sft_config.warmup_ratio,
+            weight_decay=sft_config.weight_decay,
+            logging_steps=sft_config.logging_steps,
+            save_steps=sft_config.save_steps,
+            eval_steps=sft_config.eval_steps,
+            save_total_limit=sft_config.save_total_limit,
+            fp16=sft_config.fp16,
+            bf16=sft_config.bf16,
+            tf32=sft_config.tf32,
+            optim=sft_config.optim,
+            seed=sft_config.seed,
+            remove_unused_columns=sft_config.remove_unused_columns,
+            report_to=sft_config.report_to,
+            push_to_hub=sft_config.push_to_hub,
+            hub_model_id=sft_config.hub_model_id,
+            max_length=sft_config.max_seq_length,  # TRL v0.23 uses max_length
+            packing=sft_config.packing,
+            dataset_num_proc=sft_config.dataset_num_proc,
+        )
 
-    # Setup training arguments
-    training_args = sft_config.to_training_args()
-
-    # Setup trainer
-    trainer = SFTTrainer(
-        model=model,
-        args=training_args,
-        train_dataset=dataset.get('train'),
-        eval_dataset=dataset.get('validation') or dataset.get('test'),
-        tokenizer=tokenizer,
-        dataset_text_field="text",
-        max_seq_length=sft_config.max_seq_length,
-        packing=sft_config.packing,
-        data_collator=data_collator if args.use_completion_only else None,
-    )
+        # Setup trainer with conversation support
+        trainer = SFTTrainer(
+            model=model,
+            args=trl_config,
+            train_dataset=dataset.get('train'),
+            eval_dataset=dataset.get('validation') or dataset.get('test'),
+            processing_class=tokenizer,  # TRL v0.23 uses processing_class
+        )
+    else:
+        # Legacy mode with text field
+        training_args = sft_config.to_training_args()
+        trainer = SFTTrainer(
+            model=model,
+            args=training_args,
+            train_dataset=dataset.get('train'),
+            eval_dataset=dataset.get('validation') or dataset.get('test'),
+            processing_class=tokenizer,  # TRL v0.23 uses processing_class
+            dataset_text_field="text",
+            max_seq_length=sft_config.max_seq_length,
+            packing=sft_config.packing,
+        )
 
     # Train
     print("\nStarting training...")
@@ -340,6 +401,8 @@ def main():
     config_to_save = {
         "training_mode": "lora" if args.use_lora else "sft",
         "model_name": model_config.model_name,
+        "use_conversation_format": args.use_conversation_format,
+        "assistant_only_loss": args.assistant_only_loss if args.use_conversation_format else False,
         "training_args": {
             "num_epochs": sft_config.num_train_epochs,
             "batch_size": sft_config.per_device_train_batch_size,

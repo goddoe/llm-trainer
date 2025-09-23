@@ -1,34 +1,51 @@
 import json
 import random
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Any
 from datasets import Dataset, DatasetDict, load_dataset
 import pandas as pd
+from transformers import AutoTokenizer
+from trl import apply_chat_template
 
 
 class NERDataProcessor:
     def __init__(self,
                  max_length: int = 512,
-                 instruction_template: Optional[str] = None):
+                 instruction_template: Optional[str] = None,
+                 use_conversation_format: bool = True,
+                 tokenizer: Optional[AutoTokenizer] = None):
         self.max_length = max_length
-        self.instruction_template = instruction_template or "Extract named entities from the following text and return them in JSON format."
+        # Better default instruction with entity keys and JSON format instruction
+        self.instruction_template = instruction_template or "Extract entities for: PERSON, ORG, LOC, DATE, MONEY, EVENT. Return the results in JSON format."
+        self.use_conversation_format = use_conversation_format
+        self.tokenizer = tokenizer
 
     def format_for_training(self, text: str, entities: Dict[str, List[str]],
-                           add_instruction: bool = True) -> Dict[str, str]:
-        prompt = ""
-        if add_instruction:
-            prompt = f"{self.instruction_template}\n\nText: {text}\n\nEntities:"
-        else:
-            prompt = f"Text: {text}\n\nEntities:"
-
+                           add_instruction: bool = True) -> Dict[str, Any]:
         response = json.dumps(entities, ensure_ascii=False, indent=2)
 
-        return {
-            "instruction": self.instruction_template if add_instruction else "",
-            "input": text,
-            "output": response,
-            "text": f"{prompt} {response}"  # For SFTTrainer
-        }
+        if self.use_conversation_format:
+            # Use conversation format for instruction-tuned models
+            user_message = f"{self.instruction_template}\n\nText: {text}"
+            messages = [
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": response}
+            ]
+            return {"messages": messages}
+        else:
+            # Legacy format for backward compatibility
+            prompt = ""
+            if add_instruction:
+                prompt = f"{self.instruction_template}\n\nText: {text}\n\nEntities:"
+            else:
+                prompt = f"Text: {text}\n\nEntities:"
+
+            return {
+                "instruction": self.instruction_template if add_instruction else "",
+                "input": text,
+                "output": response,
+                "text": f"{prompt} {response}"  # For SFTTrainer
+            }
 
     def load_jsonl(self, file_path: Union[str, Path]) -> List[Dict]:
         data = []
@@ -111,20 +128,44 @@ class NERDataProcessor:
         return DatasetDict(dataset_dict)
 
     def prepare_for_sft(self, examples: Dict) -> Dict:
-        texts = []
-        for i in range(len(examples['input'])):
-            instruction = examples.get('instruction', [''] * len(examples['input']))[i]
-            input_text = examples['input'][i]
-            output = examples['output'][i]
+        if self.use_conversation_format and 'messages' in examples:
+            # Already in conversation format, return as-is
+            return examples
+        elif 'messages' not in examples:
+            # Convert legacy format to conversation format if needed
+            if self.use_conversation_format:
+                messages_list = []
+                for i in range(len(examples.get('input', []))):
+                    instruction = examples.get('instruction', [''] * len(examples['input']))[i]
+                    input_text = examples['input'][i]
+                    output = examples['output'][i]
 
-            if instruction:
-                prompt = f"{instruction}\n\nText: {input_text}\n\nEntities: {output}"
+                    user_message = f"{instruction}\n\nText: {input_text}" if instruction else f"Text: {input_text}"
+                    messages = [
+                        {"role": "user", "content": user_message},
+                        {"role": "assistant", "content": output}
+                    ]
+                    messages_list.append(messages)
+
+                return {'messages': messages_list}
             else:
-                prompt = f"Text: {input_text}\n\nEntities: {output}"
+                # Legacy text format
+                texts = []
+                for i in range(len(examples['input'])):
+                    instruction = examples.get('instruction', [''] * len(examples['input']))[i]
+                    input_text = examples['input'][i]
+                    output = examples['output'][i]
 
-            texts.append(prompt)
+                    if instruction:
+                        prompt = f"{instruction}\n\nText: {input_text}\n\nEntities: {output}"
+                    else:
+                        prompt = f"Text: {input_text}\n\nEntities: {output}"
 
-        return {'text': texts}
+                    texts.append(prompt)
+
+                return {'text': texts}
+
+        return examples
 
     def load_opensource_dataset(self, dataset_name: str = "conll2003") -> DatasetDict:
         if dataset_name == "conll2003":
@@ -187,3 +228,44 @@ class NERDataProcessor:
             entities[current_type].append(' '.join(current_entity))
 
         return entities
+
+    def format_for_prompt_completion(self, text: str, entities: Dict[str, List[str]],
+                                    add_instruction: bool = True) -> Dict[str, Any]:
+        """Format data as prompt-completion pairs for instruction tuning"""
+        response = json.dumps(entities, ensure_ascii=False, indent=2)
+
+        if self.use_conversation_format:
+            # Conversational Prompt-Completion format
+            user_message = f"{self.instruction_template}\n\nText: {text}"
+            return {
+                "prompt": [{"role": "user", "content": user_message}],
+                "completion": [{"role": "assistant", "content": response}]
+            }
+        else:
+            # Standard Prompt-Completion format
+            prompt = f"{self.instruction_template}\n\nText: {text}" if add_instruction else f"Text: {text}"
+            return {
+                "prompt": prompt,
+                "completion": response
+            }
+
+    def apply_chat_template_to_dataset(self, dataset: Dataset) -> Dataset:
+        """Apply chat template to dataset using the tokenizer"""
+        if not self.tokenizer:
+            raise ValueError("Tokenizer must be provided to apply chat template")
+
+        def apply_template(examples):
+            # Apply chat template to each example
+            if 'messages' in examples:
+                # Already in conversation format
+                formatted = apply_chat_template(examples, self.tokenizer)
+                return formatted
+            elif 'prompt' in examples and 'completion' in examples:
+                # Prompt-completion format
+                formatted = apply_chat_template(examples, self.tokenizer)
+                return formatted
+            else:
+                # Convert to appropriate format first
+                return examples
+
+        return dataset.map(apply_template, batched=False)
