@@ -1,0 +1,83 @@
+[
+  {
+    "name": "신체부위",
+    "type": "extract",
+    "description": "신체 부위 (목, 배, 다리, 무릎, 손, 발, 머리, 가슴, 팔 등)",
+    "examples": ["목", "배", "무릎", "다리", "손", "발"]
+  },
+  {
+    "name": "증상",
+    "type": "extract",
+    "description": "의료 증상 및 상태 (출혈, 통증, 골절, 의식, 호흡 등)",
+    "examples": ["출혈", "통증", "골절", "의식없음", "호흡곤란"]
+  },
+  {
+    "name": "의료행위",
+    "type": "extract",
+    "description": "의료 행위 및 처치 (압박, 고정, CPR, 이송 등)",
+    "examples": ["압박", "고정", "심폐소생술", "지혈", "산소공급"]
+  },
+  {
+    "name": "의료장비",
+    "type": "extract",
+    "description": "의료 장비 및 도구 (들것, 산소마스크, 붕대 등)",
+    "examples": ["들것", "산소마스크", "붕대", "목보호대", "척추고정판"]
+  },
+  {
+    "name": "장소",
+    "type": "extract",
+    "description": "사고 장소 및 위치 정보",
+    "examples": ["집", "도로", "건물", "계단", "화장실"]
+  },
+  {
+    "name": "인물",
+    "type": "extract",
+    "description": "관련 인물 (환자, 보호자, 목격자 등)",
+    "examples": ["아저씨", "어머니", "아버지", "친구", "형"]
+  },
+  {
+    "name": "시간",
+    "type": "extract",
+    "description": "시간 관련 정보",
+    "examples": ["어제", "오늘", "아까", "방금", "10분전"]
+  },
+  {
+    "name": "나이",
+    "type": "extract",
+    "description": "환자 나이 정보",
+    "examples": ["20세", "60대", "노인", "어린이", "청소년"]
+  },
+  {
+    "name": "의식상태",
+    "type": "enum",
+    "description": "환자의 의식 상태",
+    "choices": ["의식있음", "의식없음", "혼미", "반응없음", "대화가능"]
+  },
+  {
+    "name": "호흡상태",
+    "type": "enum",
+    "description": "환자의 호흡 상태",
+    "choices": ["정상", "곤란", "없음", "빠름", "느림"]
+  },
+  {
+    "name": "긴급도",
+    "type": "enum",
+    "description": "상황의 긴급 정도",
+    "choices": ["긴급", "준긴급", "일반", "대기가능"]
+  },
+  {
+    "name": "출혈여부",
+    "type": "boolean",
+    "description": "출혈이 있는지 여부"
+  },
+  {
+    "name": "의식여부",
+    "type": "boolean",
+    "description": "의식이 있는지 여부"
+  },
+  {
+    "name": "호흡여부",
+    "type": "boolean",
+    "description": "호흡을 하고 있는지 여부"
+  }
+]

@@ -1,22 +1,58 @@
-# Python-generated files
+# Python
 __pycache__/
-*.py[oc]
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
 build/
 dist/
 wheels/
-*.egg-info
 
-# Virtual environments
-.venv
-.claude
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
 
-# IDE files
+# IDE
 .vscode/
 .idea/
-CLAUDE.md
-uv.lock
+*.swp
+*.swo
+*~
+.DS_Store
 
-# local only
-kb_docs/
-data/
+# Training outputs
 outputs/
+logs/*.log
+training_output.log
+
+# Data (keep schemas)
+data/**/*.jsonl
+data/**/*.csv
+data/**/*.txt
+data/20250911*
+!data/schemas/*.json
+
+# Model files
+*.pt
+*.pth
+*.safetensors
+*.bin
+
+# Temporary files
+*.tmp
+test_*.txt
+test_*.json
+!tests/test_*.py
+
+# uv
+uv.lock
+.python-version
+
+# Claude
+.claude/
+CLAUDE.md

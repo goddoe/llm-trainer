@@ -189,9 +189,22 @@ class VLLMStructuredInference:
             generated_text = output.outputs[0].text
 
             try:
+                # Try to parse as JSON
                 result = json.loads(generated_text)
             except json.JSONDecodeError:
-                result = {"raw_output": generated_text, "error": "Failed to parse JSON"}
+                # If JSON parsing fails, try to clean up truncated JSON
+                try:
+                    # Try to fix common truncation issues
+                    if generated_text.count('{') > generated_text.count('}'):
+                        # Add missing closing braces
+                        missing_braces = generated_text.count('{') - generated_text.count('}')
+                        generated_text_fixed = generated_text + ('}' * missing_braces)
+                        result = json.loads(generated_text_fixed)
+                    else:
+                        result = {"raw_output": generated_text, "error": "Failed to parse JSON"}
+                except:
+                    # Store raw output without Unicode escaping
+                    result = {"raw_output": generated_text, "error": "Failed to parse JSON"}
 
             results.append(result)
 
@@ -251,7 +264,7 @@ def main():
     parser.add_argument(
         "--max-tokens",
         type=int,
-        default=256,
+        default=8192,
         help="Maximum tokens to generate"
     )
     parser.add_argument(
@@ -314,7 +327,7 @@ def main():
             use_guided_generation=not args.no_guided_generation,
         )
         print("\nInput:", args.text)
-        print("Output:", json.dumps(result, indent=2))
+        print("Output:", json.dumps(result, indent=2, ensure_ascii=False))
 
     elif args.input_file:
         # Batch processing
@@ -350,7 +363,7 @@ def main():
         else:
             print("\nResults:")
             for r in all_results:
-                print(json.dumps(r, indent=2))
+                print(json.dumps(r, indent=2, ensure_ascii=False))
 
     else:
         print("Please provide --text or --input-file")
